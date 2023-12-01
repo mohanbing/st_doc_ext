@@ -3,6 +3,7 @@ State Machine and transition code
 """
 import json
 import enum
+import time
 
 from transitions import State
 from transitions import Machine
@@ -96,7 +97,7 @@ class App(Machine):
         self.add_transition(
             "analyze_more",
             source=AnalysisStage.LLM_OUTPUT,
-            dest=AnalysisStage.FILE_UPLOAD,
+            dest=AnalysisStage.DEFAULT,
         )
 
         self.add_transition(
@@ -119,28 +120,64 @@ def run() -> None:
 
     if "app" not in st.session_state:
         st.session_state["app"] = App()
-        st.session_state["openai_api_key"] = None
+        st.session_state["openai_api_key"] = ""
         st.session_state["schema_length"] = 1
+        st.session_state["tries"] = 0
 
     if st.session_state.app.state == AnalysisStage.DEFAULT:
-        api_key = st.text_input(
-            label="OpenAI API Key",
-            help="For more information visit: https://platform.openai.com/docs/api-reference/introduction",
-        )
+        if st.session_state.tries == 0:
+            api_key = st.text_input(
+                label="OpenAI API Key",
+                help="For more information visit: https://openai.com/pricing",
+                value=st.session_state.openai_api_key,
+            )
+        else:
+            st.session_state.openai_api_key = ""
+            api_key = st.text_input(
+                label="OpenAI API Key",
+                help="For more information visit: https://openai.com/pricing",
+            )
 
         st.session_state.openai_api_key = api_key
 
         submit_btn = st.button(
-            label="Submit Key", on_click=st.session_state.app.openai_api_key_presented
+            label="Submit Key",
+            on_click=st.session_state.app.openai_api_key_presented,
+            use_container_width=True,
         )
+
+        st.markdown("""---""")
+
+        if st.session_state.tries < 5:
+            try_for_free = st.button(
+                label="Try for free",
+                help="Five trial analysis without paying for an OpenAI API Key",
+                use_container_width=True,
+            )
+        else:
+            try_for_free = st.button(
+                label="Try for free",
+                help="Five trial analysis without paying for an OpenAI API Key",
+                disabled=True,
+                use_container_width=True,
+            )
+
+        if try_for_free:
+            st.session_state.tries += 1
+            if st.session_state.tries == 5:
+                st.error("Free Trials Exhausted!!!", icon="🚨")
+                time.sleep(3)
+                st.rerun()
+            st.session_state.openai_api_key = st.secrets["OPENAI_API_KEY"]
+            st.session_state.app.openai_api_key_presented()
 
     if st.session_state.app.state == AnalysisStage.FILE_UPLOAD:
         uploaded_files = []
         if len(uploaded_files) == 0:
             uploaded_files = st.file_uploader(
-                "Choose your image or pdf files",
+                "Choose your image or pdf files for analysis",
                 accept_multiple_files=True,
-                type=["pdf"],
+                type=["pdf", "jpg", "png"],
             )
 
         if len(uploaded_files) == 1:
@@ -151,6 +188,14 @@ def run() -> None:
 
         elif len(uploaded_files) > 1:
             # print("Here2!")
+            if len(uploaded_files) > 5:
+                uploaded_files = []
+                st.error(
+                    "For now only a maximum of 5 files can be uploaded at once!",
+                    icon="❌",
+                )
+                st.rerun()
+
             st.session_state["uploaded_files"] = uploaded_files
             st.session_state.app.single_file_uploaded()
             st.rerun()
