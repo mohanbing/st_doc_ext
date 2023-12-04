@@ -1,0 +1,11 @@
+stateDiagram-v2
+    def : Default
+    file_up : File Upload
+    schema_builder : Schema Builder
+    text_analyze : Text Analyze
+    llm_output : LLM Output
+    def --> file_up : Enter OpenAI API key
+    file_up --> schema_builder : File uploaded
+    schema_builder --> text_analyze : Schema submitted
+    text_analyze --> llm_output : OCR and OpenAI calls
+    llm_output --> def : Analyze more docs
