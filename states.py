@@ -203,6 +203,7 @@ def run() -> None:
         st.session_state["files_uploaded"] = uploaded_files
 
     if st.session_state.app.state == AnalysisStage.SINGLE_FILE_SCHEMA_BUILD:
+        st.markdown("## Schema Builder")
         col2, col3 = st.columns(2, gap="medium")
         # with col1:
         #     displayPDF(st.session_state.files_uploaded[0])
@@ -254,8 +255,18 @@ def run() -> None:
 
         with col3:
             add_field = st.button("➕")
+            sub_field = st.button("➖")
             if add_field:
                 st.session_state.schema_length += 1
+                st.rerun()
+
+            if sub_field:
+                if st.session_state.schema_length == 1:
+                    st.error("Atleast one field is required in schema", icon="🚨")
+                    time.sleep(2)
+                    st.rerun()
+
+                st.session_state.schema_length -= 1
                 st.rerun()
 
     if st.session_state.app.state == AnalysisStage.TEXT_ANALYZE:
