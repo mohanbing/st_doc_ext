@@ -377,8 +377,8 @@ def run() -> None:
         all_files = [
             uploaded_file.name for uploaded_file in st.session_state.uploaded_files
         ]
-        tab_list = st.tabs(all_files)
         st.markdown("## LLM Output")
+        tab_list = st.tabs(all_files)
 
         with st.sidebar:
             st.markdown("## Schema Builder")
