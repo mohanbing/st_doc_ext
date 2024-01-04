@@ -17,10 +17,13 @@ Some common utilities
 """
 
 import base64
+import hashlib
 import requests
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
+from streamlit import runtime
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 
 def displayPDF(file):
@@ -33,7 +36,8 @@ def displayPDF(file):
 
     # Displaying File
     st.markdown(pdf_display, unsafe_allow_html=True)
-    
+
+
 def convert_to_csv(df: pd.DataFrame):
     return df.to_csv().encode("utf-8")
 
@@ -60,7 +64,7 @@ def build_schema(field_values: list, dtype_values: list, required: list) -> dict
 
 # @lru_cache(maxsize=32)
 def get_ocr_response(
-    url: str, payload: dict, headers: dict, files: list
+    url: str, payload: dict, headers: dict, files: list, file_hash: str
 ) -> requests.Response:
     """Get OCR Output from either cache or the OCR service
 
@@ -73,5 +77,44 @@ def get_ocr_response(
     Returns:
         requests.Response: _description_
     """
-    resp = requests.request("POST", url, headers=headers, data=payload, files=files)
+
+    @st.cache_resource
+    def cached_ocr_request(file_hash: str) -> requests.Response:
+        resp = requests.request(
+            "POST", url, headers=headers, data=payload, files=files, timeout=20
+        )
+        return resp
+
+    resp = cached_ocr_request(file_hash)
+    # print(file_hash)
+    # print(cached_ocr_request.cache_info())
     return resp
+
+
+def generate_hash(file_bytes: bytes) -> str:
+    """Generates hash from bytes
+
+    Args:
+        file_bytes (bytes): _description_
+
+    Returns:
+        str: _description_
+    """
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def get_remote_ip() -> str:
+    """Get remote ip."""
+
+    try:
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return None
+
+        session_info = runtime.get_instance().get_client(ctx.session_id)
+        if session_info is None:
+            return None
+    except Exception as e:
+        return None
+
+    return session_info.request.remote_ip

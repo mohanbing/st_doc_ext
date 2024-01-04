@@ -28,7 +28,7 @@ import streamlit as st
 # from decouple import config
 
 from llm import LLM
-from utils import get_ocr_response, build_schema, convert_to_csv
+from utils import generate_hash, get_ocr_response, build_schema, convert_to_csv
 
 HOST_URL = st.secrets["HOST_URL"]
 OCR_SERVICE_PORT = st.secrets["OCR_SERVICE_PORT"]
@@ -106,6 +106,12 @@ class App(Machine):
             "llm_output",
             source=AnalysisStage.TEXT_ANALYZE,
             dest=AnalysisStage.LLM_OUTPUT,
+        )
+
+        self.add_transition(
+            "reanalyze",
+            source=AnalysisStage.LLM_OUTPUT,
+            dest=AnalysisStage.TEXT_ANALYZE,
         )
 
         self.add_transition(
@@ -217,6 +223,7 @@ def run() -> None:
         st.session_state["files_uploaded"] = uploaded_files
 
     if st.session_state.app.state == AnalysisStage.SINGLE_FILE_SCHEMA_BUILD:
+        st.markdown("## Schema Builder")
         col2, col3 = st.columns(2, gap="medium")
         # with col1:
         #     displayPDF(st.session_state.files_uploaded[0])
@@ -268,8 +275,18 @@ def run() -> None:
 
         with col3:
             add_field = st.button("➕")
+            sub_field = st.button("➖")
             if add_field:
                 st.session_state.schema_length += 1
+                st.rerun()
+
+            if sub_field:
+                if st.session_state.schema_length == 1:
+                    st.error("Atleast one field is required in schema", icon="🚨")
+                    time.sleep(2)
+                    st.rerun()
+
+                st.session_state.schema_length -= 1
                 st.rerun()
 
     if st.session_state.app.state == AnalysisStage.TEXT_ANALYZE:
@@ -279,79 +296,184 @@ def run() -> None:
 
         my_bar = st.progress(0, text="Analysis in progress. Please wait!")
         st.session_state["llm_output"] = []
-        for cnt, uploaded_file in enumerate(st.session_state.uploaded_files):
-            my_bar.progress(cnt, text=f"Analyzing {uploaded_file.name}")
-            byte_type: str = uploaded_file.name.split(".")[-1]
-            print(byte_type)
 
-            if byte_type == "pdf":
-                url: str = (
-                    HOST_URL + ":" + OCR_SERVICE_PORT + "/" + OCR_PDF_RESP_ENDPOINT
+        with st.container():
+            for cnt, uploaded_file in enumerate(st.session_state.uploaded_files):
+                if uploaded_file.tell() > 0:
+                    uploaded_file.seek(0)
+
+                file_hash = generate_hash(uploaded_file.read())
+                uploaded_file.seek(0)
+
+                my_bar.progress(
+                    cnt / len(st.session_state.uploaded_files),
+                    text=f"Analyzing {uploaded_file.name}",
                 )
-                files = [
-                    (
-                        "file",
-                        (
-                            uploaded_file.name,
-                            uploaded_file,
-                            "application/pdf",
-                        ),
+                byte_type: str = uploaded_file.name.split(".")[-1]
+                print(byte_type)
+
+                if byte_type == "pdf":
+                    url: str = (
+                        HOST_URL + ":" + OCR_SERVICE_PORT + "/" + OCR_PDF_RESP_ENDPOINT
                     )
-                ]
-            else:
-                url = HOST_URL + ":" + OCR_SERVICE_PORT + "/" + OCR_IMG_RESP_ENDPOINT
-                files = [
-                    (
-                        "file",
+                    files = [
                         (
-                            uploaded_file.name,
-                            uploaded_file,
-                            f"image/{byte_type}",
-                        ),
+                            "file",
+                            (
+                                uploaded_file.name,
+                                uploaded_file,
+                                "application/pdf",
+                            ),
+                        )
+                    ]
+                else:
+                    url = (
+                        HOST_URL + ":" + OCR_SERVICE_PORT + "/" + OCR_IMG_RESP_ENDPOINT
                     )
-                ]
+                    files = [
+                        (
+                            "file",
+                            (
+                                uploaded_file.name,
+                                uploaded_file,
+                                f"image/{byte_type}",
+                            ),
+                        )
+                    ]
 
-            payload = {}
-            headers = {}
+                payload = {}
+                headers = {}
 
-            resp = get_ocr_response(
-                url=url, payload=payload, files=files, headers=headers
-            )
-            if resp.status_code == 200:
-                st.info("Received OCR Output", icon="ℹ️")
-            else:
-                st.warning(
-                    "Failed to receive OCR output! Skipping this document", icon="⚠️"
+                resp = get_ocr_response(
+                    url=url,
+                    payload=payload,
+                    files=files,
+                    headers=headers,
+                    file_hash=file_hash,
                 )
-                continue
+                if resp.status_code == 200:
+                    st.info("Received OCR Output", icon="ℹ️")
+                else:
+                    st.warning(
+                        "Failed to receive OCR output! Skipping this document",
+                        icon="⚠️",
+                    )
+                    continue
 
-            resp_json = json.loads(resp.text)
-            # st.write("Extracting information from text")
-            schema = build_schema(
-                field_values=st.session_state.field_values,
-                dtype_values=st.session_state.dtype_values,
-                required=st.session_state.required_field,
-            )
-            with st.spinner("OpenAI API Analyzing Text"):
-                llm_obj = LLM(
-                    temperature=st.session_state.temp,
-                    openai_api_key=st.session_state.openai_api_key,
+                resp_json = json.loads(resp.text)
+                # st.write("Extracting information from text")
+                schema = build_schema(
+                    field_values=st.session_state.field_values,
+                    dtype_values=st.session_state.dtype_values,
+                    required=st.session_state.required_field,
                 )
-                output = llm_obj.analyze_text(resp_json["text"], schema=schema)
+                with st.spinner("OpenAI API Analyzing Text"):
+                    llm_obj = LLM(
+                        temperature=st.session_state.temp,
+                        openai_api_key=st.session_state.openai_api_key,
+                    )
+                    output = llm_obj.analyze_text(resp_json["text"], schema=schema)
 
-            st.session_state.llm_output.append(output)
-            # st.write("Received LLM Output!")
+                st.session_state.llm_output.append(output)
+                # st.write("Received LLM Output!")
 
-        st.success("Analysis Complete!")
-        st.session_state.app.llm_output()
-        st.rerun()
+            my_bar.progress(
+                1.0,
+                text="Done Analyzing!",
+            )
+            st.success("Analysis Complete!")
+            time.sleep(2)
+            st.session_state.app.llm_output()
+            st.rerun()
 
     if st.session_state.app.state == AnalysisStage.LLM_OUTPUT:
-        print(len(st.session_state.llm_output))
+        # print(len(st.session_state.llm_output))
         all_files = [
             uploaded_file.name for uploaded_file in st.session_state.uploaded_files
         ]
+        st.markdown("## LLM Output")
         tab_list = st.tabs(all_files)
+
+        with st.sidebar:
+            st.markdown("## Schema Builder")
+            with st.form("schema_form_llm_output"):
+                field_values: list[str | None] = [
+                    None for i in range(st.session_state.schema_length)
+                ]
+                dtype_values: list[str | None] = [
+                    None for i in range(st.session_state.schema_length)
+                ]
+                required_field: list[bool | None] = [
+                    None for i in range(st.session_state.schema_length)
+                ]
+                for i in range(st.session_state.schema_length):
+                    field_values[i] = st.text_input(
+                        "Field",
+                        key=f"sidebar_{i}",
+                        value=st.session_state.field_values[i]
+                        if i < len(st.session_state.field_values)
+                        else "",
+                    )
+
+                    dtype_to_idx = {
+                        dtype: cnt for cnt, dtype in enumerate(AvailableDtype)
+                    }
+                    dtype_values[i] = st.selectbox(
+                        "dtype",
+                        (dtype.value for dtype in AvailableDtype),
+                        key=f"sidebar_dtype_{i}",
+                        index=dtype_to_idx.get(st.session_state.dtype_values[i], 0)
+                        if i < len(st.session_state.dtype_values)
+                        else 0,
+                    )
+                    required_field[i] = st.checkbox(
+                        label="Required?",
+                        value=st.session_state.required_field[i]
+                        if i < len(st.session_state.required_field)
+                        else False,
+                        key=f"sidebar_reqd_{i}",
+                    )
+                    st.divider()
+
+                temp = st.slider(
+                    label="Temperature",
+                    min_value=0.0,
+                    step=0.1,
+                    max_value=1.0,
+                    value=st.session_state.temp,
+                    key="sidebar_temp",
+                    help="The temperature parameter adjusts the randomness of the \
+                        output. Higher values like 0.7 will make the output more \
+                        random, while lower values like 0.2 will make it \
+                        more focused and deterministic.",
+                )
+
+                submit = st.form_submit_button(
+                    "Re-Analyze Document", use_container_width=True
+                )
+
+                if submit:
+                    st.session_state["field_values"] = field_values
+                    st.session_state["dtype_values"] = dtype_values
+                    st.session_state["required_field"] = required_field
+                    st.session_state["temp"] = temp
+                    st.session_state.app.reanalyze()
+                    st.rerun()
+
+            add_field = st.button("➕", key="sidebar_plus")
+            sub_field = st.button("➖", key="sidebar_minus")
+            if add_field:
+                st.session_state.schema_length += 1
+                st.rerun()
+
+            if sub_field:
+                if st.session_state.schema_length == 1:
+                    st.error("Atleast one field is required in schema", icon="🚨")
+                    time.sleep(2)
+                    st.rerun()
+
+                st.session_state.schema_length -= 1
+                st.rerun()
 
         for cnt, tab in enumerate(tab_list):
             with tab:
