@@ -34,6 +34,7 @@ HOST_URL = st.secrets["HOST_URL"]
 OCR_SERVICE_PORT = st.secrets["OCR_SERVICE_PORT"]
 OCR_PDF_RESP_ENDPOINT = st.secrets["OCR_PDF_RESP_ENDPOINT"]
 OCR_IMG_RESP_ENDPOINT = st.secrets["OCR_IMG_RESP_ENDPOINT"]
+ALLOW_FREE = st.secrets["ALLOW_FREE"]
 
 
 class AvailableDtype(enum.Enum):
@@ -167,29 +168,30 @@ def run() -> None:
         )
 
         st.markdown("""---""")
+        
+        if ALLOW_FREE:
+            if st.session_state.tries < 5:
+                try_for_free = st.button(
+                    label="Try for free",
+                    help="Five trial analysis without paying for an OpenAI API Key",
+                    use_container_width=True,
+                )
+            else:
+                try_for_free = st.button(
+                    label="Try for free",
+                    help="Five trial analysis without paying for an OpenAI API Key",
+                    disabled=True,
+                    use_container_width=True,
+                )
 
-        if st.session_state.tries < 5:
-            try_for_free = st.button(
-                label="Try for free",
-                help="Five trial analysis without paying for an OpenAI API Key",
-                use_container_width=True,
-            )
-        else:
-            try_for_free = st.button(
-                label="Try for free",
-                help="Five trial analysis without paying for an OpenAI API Key",
-                disabled=True,
-                use_container_width=True,
-            )
-
-        if try_for_free:
-            st.session_state.tries += 1
-            if st.session_state.tries == 5:
-                st.error("Free Trials Exhausted!!!", icon="🚨")
-                time.sleep(3)
-                st.rerun()
-            st.session_state.openai_api_key = st.secrets["OPENAI_API_KEY"]
-            st.session_state.app.openai_api_key_presented()
+            if try_for_free:
+                st.session_state.tries += 1
+                if st.session_state.tries == 5:
+                    st.error("Free Trials Exhausted!!!", icon="🚨")
+                    time.sleep(3)
+                    st.rerun()
+                st.session_state.openai_api_key = st.secrets["OPENAI_API_KEY"]
+                st.session_state.app.openai_api_key_presented()
 
     if st.session_state.app.state == AnalysisStage.FILE_UPLOAD:
         uploaded_files = []

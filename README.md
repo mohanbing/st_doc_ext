@@ -19,7 +19,10 @@ pip install -r requirements.txt
 
 ## Setup Streamlit Secrets File
 
-This application communicates with the OCR API service to generate the OCR outputs. Spawn the OCR service and then create the secrets.toml file in .streamlit directory at root level and add the following fields to it.
+This application communicates with the OCR API service to generate the OCR outputs. 
+Spawn the OCR service and then create the secrets.toml file in .streamlit directory at root level and add the following fields to it.
+
+Learn more about Secrets management in Streamlit at: https://docs.streamlit.io/streamlit-community-cloud/deploy-your-app/secrets-management
 
 ```toml
 HOST_URL = ""
@@ -27,6 +30,7 @@ OCR_SERVICE_PORT = ""
 OCR_PDF_RESP_ENDPOINT = "ocr_pdf"
 OCR_IMG_RESP_ENDPOINT = "ocr_image"
 OPENAI_API_KEY = ""
+ALLOW_FREE = false
 ```
 
 ## Run Streamlit App
@@ -37,4 +41,8 @@ To finally run the app:
 streamlit run states.py
 ```
 
+## Experience the app!
 
+Hosted with the help of Streamlit Cloud!
+
+https://extractinfo.streamlit.app/
