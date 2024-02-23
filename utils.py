@@ -81,7 +81,7 @@ def get_ocr_response(
     @st.cache_resource
     def cached_ocr_request(file_hash: str) -> requests.Response:
         resp = requests.request(
-            "POST", url, headers=headers, data=payload, files=files, timeout=20
+            "POST", url, headers=headers, data=payload, files=files, timeout=None
         )
         return resp
 
